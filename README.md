@@ -4,8 +4,8 @@ Snippets of code I written for some of my games (for my personal portfolio use)
 
 ## Table of Contents
 
-- Not Suica Game Snippets (Unity)
-- KINGQuest Game Snippets (Unity)
+- [Not Suica Game Snippets (Unity)](#totally-not-suica-game-snippets-unity)
+- [KINGQuest Game Snippets (Unity)](#kingquest-game-snippets-unity)
 - Flappy Peo Game Snippets (Unity)
 
 ## Totally Not Suica Game Snippets (Unity)
@@ -167,9 +167,232 @@ public void EnableKeyboard() {
 }
 ```
 
-4. To Further appeal to the player of the fanbase. I drew and added the Beloved Mascot of the Vtuber, Popomaru, as a moving Live2D model in the game following the player's cursor. Using the official Live2D SDK for Unity.  
+4. To Further appeal to the player of the fanbase. I drew and added the Beloved Mascot of the Vtuber, Popomaru, as a moving Live2D model in the game following the player's cursor. Using the official Live2D SDK for Unity. (Since the game uses a Legacy Version of Live2D SDK, the code needs to be reimplemented in the future)
 
 ```csharp
+// As Live2D Keyframes value can't be updated immediately in the Update() function, LateUpdate() is used instead
+void LateUpdate()
+{
+    if(lerpIn)
+    {
+        StartCoroutine(Lerp(startVal:0.0f,endVal:1.0f,lerpDuration:1f,_lerpIn:true));
+    }
+    else if(lerpOut)
+    {
+        StartCoroutine(Lerp(startVal:1.0f,endVal:0.0f,lerpDuration:1f,_lerpIn:false));
+    }
+}
 
-
+//Petting Animation Logic using Mouse Drag
+public void OnMouseDrag()
+{
+    if(inPatRange)
+    {
+        // overshoot = true;
+        var _animator = GetComponentInParent<Animator>();
+        _animator.SetBool("startPatting",true);
+    }
+}
 ```
+
+---
+
+## KINGQuest Game Snippets (Unity)
+
+#### For this project, it is submitted to the Fifth HoloJam. I was the project lead and head developer. The game is a 2D Platformer Game based on the game, "Megaman X". The game is a direct reference to Vtuber, Shirakami Fubuki's Song: ["KINGWORLD"](https://youtu.be/yVaQpUUAzik?si=B7GkiBKiRwycXfqJ).
+
+_The project had a number of unfixed bugs due to Game Jam time constraints._
+
+Here are some of the code snippets I wrote for the game:
+
+1. Using a Self-Customized version of [ta-davis-yu's 2D Platformer Hunter Engine](https://github.com/ta-david-yu/2D-Platformer-Hunter) allows the player to have better raycasting, better movement and attacking mechanics.
+
+   ##### Enemy and Player Knockback Mechanics (w/ Cooldown to prevent stunlocking)
+
+   ```csharp
+   public IEnumerator FakeAddForceMotion(GameObject target, EnemyData enemyData, float facingDirection)
+   {
+       float i = 0.01f;
+       Rigidbody2D rb = target.GetComponent<Rigidbody2D>();
+       Vector2 raycastDirection = new Vector2(-facingDirection, 0);
+       float raycastDistance = .7f;
+       float topRaycastDistance = .2f;
+       int worldLayerMask = LayerMask.GetMask("World");
+
+       int numberOfRaycasts = 20;
+       float padding = 0.1f;
+       Collider2D collider = target.GetComponent<Collider2D>();
+       float colliderHeight = collider.bounds.size.y;
+       float raycastSpacing = (colliderHeight) / (numberOfRaycasts - 1);
+       while (enemyData.knockbackForce >= i)
+       {
+           bool obstacleDetected = false;
+
+           for (int j = 0; j < numberOfRaycasts; j++)
+           {
+               // Adjust the raycast origin for each raycast line
+               Vector2 raycastOrigin = new Vector2(target.transform.position.x, collider.bounds.min.y + padding + j * raycastSpacing);
+               RaycastHit2D hit = Physics2D.Raycast(raycastOrigin, raycastDirection, raycastDistance, worldLayerMask);
+
+               // Draw the raycast line (DEBUGGING)
+               Debug.DrawLine(raycastOrigin, raycastOrigin + raycastDirection * raycastDistance, Color.red);
+
+               if (hit.collider != null)
+               {
+                   // Obstacle detected, stop the player's velocity
+                   Debug.Log("Obstacle detected");
+                   rb.linearVelocity = Vector2.zero;
+                   obstacleDetected = true;
+                   break;
+               }
+           }
+
+           // Add a raycast on top of the collider
+           Vector2 topRaycastOrigin = new Vector2(target.transform.position.x, collider.bounds.max.y - padding);
+           RaycastHit2D topHit = Physics2D.Raycast(topRaycastOrigin, raycastDirection, topRaycastDistance, worldLayerMask);
+
+           // Draw the top raycast line (DEBUGGING)
+           Debug.DrawLine(topRaycastOrigin, topRaycastOrigin + raycastDirection * topRaycastDistance, Color.blue);
+
+           if (topHit.collider != null)
+           {
+               // Obstacle detected, stop the player's velocity
+               Debug.Log("Obstacle detected on top");
+               rb.linearVelocity = Vector2.zero;
+               obstacleDetected = true;
+           }
+
+           if (obstacleDetected)
+           {
+               yield break;
+           }
+
+           // Apply the knockback force
+           rb.linearVelocity = new Vector2(enemyData.knockbackForce / i * -facingDirection, 0.1f); // For X axis positive force
+           i += Time.deltaTime;
+           yield return new WaitForEndOfFrame();
+       }
+
+       rb.linearVelocity = Vector2.zero;
+       yield return null;
+   }
+
+   ```
+
+   ##### Mana Mechanics for the Player
+
+   ```csharp
+   private void CheckMana()
+   {
+       playerMana += (Stats.ManaRecoverPerSec + currentBuff.RecoverMana * Stats.BuffManaRecover) * Time.deltaTime;
+
+       if (playerMana > maxMana)
+       {
+           playerMana = maxMana;
+       }
+
+       EventManaUpdate(playerMana, maxMana);
+   }
+   public bool CanDash()
+   {
+       return playerMana >= Stats.DashManaCost;
+   }
+   ```
+
+   ##### Invincible Frames for Dashing (Allows for the player to be invincible for a short period of time after dashing)
+
+   ```csharp
+   public void OnDash(int direction)
+   {
+       StopCoroutine(DashIFramesPadding());
+       // Change the player's layer to the dash layer
+       gameObject.layer = LayerMask.NameToLayer("DashLayer");
+
+       instance.isInvincible = true;
+
+       playerMana -= Stats.DashManaCost;
+       EventManaUpdate(playerMana, maxMana);
+
+       PlaySound(dashSound);
+       // Revert the player's layer back to the original layer
+   }
+   private void OnDashEnd()
+   {
+       StopCoroutine(DashIFramesPadding());
+       StartCoroutine(DashIFramesPadding());
+   }
+   ```
+
+   ##### Crude Weapon Switching and Attack Mechanics (Sword & Gun)
+
+   ```csharp
+   void Update()
+   {
+       if (Input.GetKeyDown(KeyCode.Alpha1) && !isSwitchingWeapons)
+       {
+           if (isFiring) return;
+           isSwitchingWeapons = true;
+           currentWeapon = 1;
+           m_Animator.SetBool("ShootReady", false);
+           m_Animator.SetInteger("ActionState", 0);
+       }
+       else if (Input.GetKeyDown(KeyCode.Alpha2) && !isSwitchingWeapons)
+       {
+           if (isSlashing) return;
+           isSwitchingWeapons = true;
+           currentWeapon = 2;
+           m_Animator.SetBool("ShootReady", true);
+           m_Animator.SetInteger("ActionState", 1);
+       }
+
+       if (Input.GetKeyUp(KeyCode.Alpha1))
+       {
+           isSwitchingWeapons = false;
+       }
+       else if (Input.GetKeyUp(KeyCode.Alpha2))
+       {
+           isSwitchingWeapons = false;
+       }
+
+       if (Input.GetButton("Fire1"))
+       {
+           if (currentWeapon == 1)
+           {
+               m_Animator.SetTrigger("Slash");
+               isSlashing = true;
+               m_Animator.SetBool("isSlashing", isSlashing);
+           }
+           else if (currentWeapon == 2 && Time.time >= nextFireTime)
+           {
+               Shoot();
+               isFiring = true;
+               m_Animator.SetTrigger("Fire");
+               nextFireTime = Time.time + fireCooldown;
+           }
+       }
+       else
+       {
+           if (currentWeapon == 1)
+           {
+               isSlashing = false;
+               m_Animator.SetBool("isSlashing", isSlashing);
+           }
+           else if (currentWeapon == 2)
+           {
+               isFiring = false;
+           }
+       }
+
+       if (!gameObject.GetComponent<Animator>().GetBool("isGrounded"))
+       {
+           emission.enabled = false;
+       }
+       else
+       {
+           emission.enabled = true;
+
+       }
+
+       CheckMana();
+   }
+   ```

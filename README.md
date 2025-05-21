@@ -6,7 +6,6 @@ Snippets of code I written for some of my games (for my personal portfolio use)
 
 - [Not Suica Game Snippets (Unity)](#totally-not-suica-game-snippets-unity)
 - [KINGQuest Game Snippets (Unity)](#kingquest-game-snippets-unity)
-- Flappy Peo Game Snippets (Unity)
 
 ## Totally Not Suica Game Snippets (Unity)
 
@@ -326,47 +325,57 @@ Here are some of the code snippets I wrote for the game:
    ##### Crude Weapon Switching and Attack Mechanics (Sword & Gun)
 
    ```csharp
+   private Animator _animator;
+
+   void Awake()
+   {
+       _animator = GetComponent<Animator>();
+   }
+
    void Update()
    {
-       if (Input.GetKeyDown(KeyCode.Alpha1) && !isSwitchingWeapons)
-       {
-           if (isFiring) return;
-           isSwitchingWeapons = true;
-           currentWeapon = 1;
-           m_Animator.SetBool("ShootReady", false);
-           m_Animator.SetInteger("ActionState", 0);
-       }
-       else if (Input.GetKeyDown(KeyCode.Alpha2) && !isSwitchingWeapons)
-       {
-           if (isSlashing) return;
-           isSwitchingWeapons = true;
-           currentWeapon = 2;
-           m_Animator.SetBool("ShootReady", true);
-           m_Animator.SetInteger("ActionState", 1);
-       }
+       HandleWeaponSwitchInput();
+       HandleFireInput();
+       UpdateEmission();
+       CheckMana();
+   }
 
-       if (Input.GetKeyUp(KeyCode.Alpha1))
-       {
+   private void HandleWeaponSwitchInput()
+   {
+       if (Input.GetKeyUp(KeyCode.Alpha1) || Input.GetKeyUp(KeyCode.Alpha2))
            isSwitchingWeapons = false;
-       }
-       else if (Input.GetKeyUp(KeyCode.Alpha2))
-       {
-           isSwitchingWeapons = false;
-       }
 
+       if (isSwitchingWeapons) return;
+
+       if (Input.GetKeyDown(KeyCode.Alpha1) && !isFiring)
+           SwitchWeapon(1, false, 0);
+       else if (Input.GetKeyDown(KeyCode.Alpha2) && !isSlashing)
+           SwitchWeapon(2, true, 1);
+   }
+
+   private void SwitchWeapon(int weaponId, bool shootReady, int actionState)
+   {
+       isSwitchingWeapons = true;
+       currentWeapon = weaponId;
+       _animator.SetBool("ShootReady", shootReady);
+       _animator.SetInteger("ActionState", actionState);
+   }
+
+   private void HandleFireInput()
+   {
        if (Input.GetButton("Fire1"))
        {
            if (currentWeapon == 1)
            {
-               m_Animator.SetTrigger("Slash");
+               _animator.SetTrigger("Slash");
                isSlashing = true;
-               m_Animator.SetBool("isSlashing", isSlashing);
+               _animator.SetBool("isSlashing", true);
            }
            else if (currentWeapon == 2 && Time.time >= nextFireTime)
            {
                Shoot();
                isFiring = true;
-               m_Animator.SetTrigger("Fire");
+               _animator.SetTrigger("Fire");
                nextFireTime = Time.time + fireCooldown;
            }
        }
@@ -375,24 +384,33 @@ Here are some of the code snippets I wrote for the game:
            if (currentWeapon == 1)
            {
                isSlashing = false;
-               m_Animator.SetBool("isSlashing", isSlashing);
+               _animator.SetBool("isSlashing", false);
            }
-           else if (currentWeapon == 2)
-           {
+           else
                isFiring = false;
-           }
        }
+   }
 
-       if (!gameObject.GetComponent<Animator>().GetBool("isGrounded"))
-       {
-           emission.enabled = false;
-       }
-       else
-       {
-           emission.enabled = true;
-
-       }
-
-       CheckMana();
+    // Parent "Trail Emission" with grounded player
+   private void UpdateEmission()
+   {
+       emission.enabled = _animator.GetBool("isGrounded");
    }
    ```
+
+2. The game has a World Corruption effect that shows the gradual corruption of the world. The effect is a simple shader and Particle System that uses a noise texture to create a distortion effect. The shader is applied to the camera using a custom script.
+
+3. After Images of the player occurs when the player dashes. This effect is achieved by the AfterImage GeneratorScript
+
+````csharp
+public IEnumerator GenerateAfterImage()
+    {
+        GameObject _afterImage = Instantiate(afterImage, player.transform.position, player.transform.rotation);
+        _afterImage.transform.localScale = player.transform.localScale;
+        _afterImage.GetComponent<SpriteRenderer>().enabled = true;
+        _afterImage.GetComponent<SpriteRenderer>().sprite = player.GetComponent<SpriteRenderer>().sprite;
+        yield return new WaitForSeconds(afterImageDelay);
+
+    }
+    ```
+````
